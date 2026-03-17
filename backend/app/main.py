@@ -1,11 +1,25 @@
-from fastapi import FastAPI
+import logging
+
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from typing import List
-from .models import IngestResponse, AskRequest, AskResponse, MetricsResponse, Citation, Chunk
-from .settings import settings
+
 from .ingest import load_documents
+from .models import (
+    AskRequest,
+    AskResponse,
+    Chunk,
+    Citation,
+    IngestResponse,
+    MetricsResponse,
+)
 from .rag import RAGEngine, build_chunks_from_docs
+from .settings import settings
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="AI Policy & Product Helper")
 
@@ -19,36 +33,92 @@ app.add_middleware(
 
 engine = RAGEngine()
 
+
 @app.get("/api/health")
-def health():
+async def health() -> dict[str, str]:
+    """Liveness probe — always returns ok."""
     return {"status": "ok"}
 
+
 @app.get("/api/metrics", response_model=MetricsResponse)
-def metrics():
-    s = engine.stats()
-    return MetricsResponse(**s)
+async def metrics() -> MetricsResponse:
+    """Return current engine metrics and model info."""
+    return MetricsResponse(**engine.stats())
+
 
 @app.post("/api/ingest", response_model=IngestResponse)
-def ingest():
-    docs = load_documents(settings.data_dir)
-    chunks = build_chunks_from_docs(docs, settings.chunk_size, settings.chunk_overlap)
-    new_docs, new_chunks = engine.ingest_chunks(chunks)
-    return IngestResponse(indexed_docs=new_docs, indexed_chunks=new_chunks)
+async def ingest() -> IngestResponse:
+    """Load documents from data directory, chunk, embed, and store."""
+    try:
+        docs = load_documents(settings.data_dir)
+        chunks = build_chunks_from_docs(
+            docs, settings.chunk_size, settings.chunk_overlap
+        )
+        total_docs, total_chunks = engine.ingest_chunks(chunks)
+        return IngestResponse(
+            indexed_docs=total_docs,
+            indexed_chunks=total_chunks,
+        )
+    except Exception as exc:
+        logger.error("Ingestion failed: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Ingestion failed: {exc}"
+        ) from exc
+
 
 @app.post("/api/ask", response_model=AskResponse)
-def ask(req: AskRequest):
-    ctx = engine.retrieve(req.query, k=req.k or 4)
-    answer = engine.generate(req.query, ctx)
-    citations = [Citation(title=c.get("title"), section=c.get("section")) for c in ctx]
-    chunks = [Chunk(title=c.get("title"), section=c.get("section"), text=c.get("text")) for c in ctx]
-    stats = engine.stats()
-    return AskResponse(
-        query=req.query,
-        answer=answer,
-        citations=citations,
-        chunks=chunks,
-        metrics={
-            "retrieval_ms": stats["avg_retrieval_latency_ms"],
-            "generation_ms": stats["avg_generation_latency_ms"],
-        }
-    )
+async def ask(req: AskRequest) -> AskResponse:
+    """Retrieve relevant chunks and generate an answer with citations."""
+    if not req.query.strip():
+        raise HTTPException(
+            status_code=400, detail="Query must not be empty"
+        )
+
+    try:
+        ctx = engine.retrieve(req.query, k=req.k or 4)
+        answer = engine.generate(req.query, ctx)
+
+        # Deduplicate citations by (title, section)
+        seen: set[tuple[str | None, str | None]] = set()
+        citations: list[Citation] = []
+        for chunk in ctx:
+            key = (chunk.get("title"), chunk.get("section"))
+            if key not in seen:
+                seen.add(key)
+                citations.append(
+                    Citation(
+                        title=chunk.get("title", "Unknown"),
+                        section=chunk.get("section"),
+                    )
+                )
+
+        chunks = [
+            Chunk(
+                title=c.get("title", "Unknown"),
+                section=c.get("section"),
+                text=c.get("text", ""),
+            )
+            for c in ctx
+        ]
+
+        stats = engine.stats()
+        return AskResponse(
+            query=req.query,
+            answer=answer,
+            citations=citations,
+            chunks=chunks,
+            metrics={
+                "retrieval_ms": stats["avg_retrieval_latency_ms"],
+                "generation_ms": stats["avg_generation_latency_ms"],
+            },
+        )
+    except Exception as exc:
+        logger.error(
+            "Ask failed for query '%s': %s",
+            req.query[:80],
+            exc,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500, detail=f"Ask failed: {exc}"
+        ) from exc
