@@ -20,6 +20,7 @@ services:
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - LLM_MODEL=${LLM_MODEL:-openai/gpt-4o-mini}
       - OLLAMA_HOST=${OLLAMA_HOST:-http://ollama:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2}
       - VECTOR_STORE=${VECTOR_STORE:-qdrant}
       - COLLECTION_NAME=${COLLECTION_NAME:-policy_helper}
       - CHUNK_SIZE=${CHUNK_SIZE:-700}
@@ -41,5 +42,14 @@ services:
     depends_on:
       - backend
 
+  ollama:
+    image: ollama/ollama:latest
+    profiles: [ollama]
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
 volumes:
   qdrant_data:
+  ollama_data:

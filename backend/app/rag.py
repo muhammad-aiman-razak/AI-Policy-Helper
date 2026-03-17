@@ -80,9 +80,7 @@ class InMemoryStore:
             return []
         matrix = np.vstack(self.vecs)
         q = query.reshape(1, -1)
-        norms = np.linalg.norm(matrix, axis=1) * (
-            np.linalg.norm(q) + 1e-9
-        )
+        norms = np.linalg.norm(matrix, axis=1) * (np.linalg.norm(q) + 1e-9)
         sims = (matrix @ q.T).ravel() / (norms + 1e-9)
         idx = np.argsort(-sims)[:k]
         return [(float(sims[i]), self.meta[i]) for i in idx]
@@ -96,9 +94,7 @@ class QdrantStore:
     """Qdrant-backed vector store."""
 
     def __init__(self, collection: str, dim: int = 384) -> None:
-        self.client = QdrantClient(
-            url="http://qdrant:6333", timeout=10.0
-        )
+        self.client = QdrantClient(url="http://qdrant:6333", timeout=10.0)
         self.collection = collection
         self.dim = dim
         self._ensure_collection()
@@ -128,9 +124,7 @@ class QdrantStore:
             )
             for i, (vec, meta) in enumerate(zip(vectors, metadatas))
         ]
-        self.client.upsert(
-            collection_name=self.collection, points=points
-        )
+        self.client.upsert(collection_name=self.collection, points=points)
         return len(points)
 
     def search(
@@ -143,9 +137,7 @@ class QdrantStore:
             limit=k,
             with_payload=True,
         )
-        return [
-            (float(r.score), dict(r.payload)) for r in results
-        ]
+        return [(float(r.score), dict(r.payload)) for r in results]
 
     @property
     def count(self) -> int:
@@ -189,9 +181,7 @@ def _build_context_block(contexts: List[Dict[str, Any]]) -> str:
 class StubLLM:
     """Deterministic stub LLM for offline development and testing."""
 
-    def generate(
-        self, query: str, contexts: List[Dict[str, Any]]
-    ) -> str:
+    def generate(self, query: str, contexts: List[Dict[str, Any]]) -> str:
         lines = ["Answer (stub): Based on the following sources:"]
         for ctx in contexts:
             section = ctx.get("section") or "General"
@@ -199,18 +189,14 @@ class StubLLM:
             lines.append(f"- {title} (Section: {section})")
         lines.append("\nSummary:")
         joined = " ".join(c.get("text", "") for c in contexts)
-        lines.append(
-            joined[:600] + ("..." if len(joined) > 600 else "")
-        )
+        lines.append(joined[:600] + ("..." if len(joined) > 600 else ""))
         return "\n".join(lines)
 
 
 class OpenRouterLLM:
     """LLM provider using OpenRouter (OpenAI-compatible API)."""
 
-    def __init__(
-        self, api_key: str, model: str = "openai/gpt-4o-mini"
-    ) -> None:
+    def __init__(self, api_key: str, model: str = "openai/gpt-4o-mini") -> None:
         from openai import OpenAI
 
         self.client = OpenAI(
@@ -219,13 +205,41 @@ class OpenRouterLLM:
         )
         self.model = model
 
-    def generate(
-        self, query: str, contexts: List[Dict[str, Any]]
-    ) -> str:
+    def generate(self, query: str, contexts: List[Dict[str, Any]]) -> str:
         context_block = _build_context_block(contexts)
-        user_message = (
-            f"Context:\n{context_block}\n\nQuestion: {query}"
+        user_message = f"Context:\n{context_block}\n\nQuestion: {query}"
+        resp = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": _SYSTEM_PROMPT},
+                {"role": "user", "content": user_message},
+            ],
+            temperature=0.1,
         )
+        return resp.choices[0].message.content
+
+
+class OllamaLLM:
+    """LLM provider using a local Ollama instance.
+
+    Ollama exposes an OpenAI-compatible API at /v1, so we reuse
+    the openai SDK with a custom base_url and a dummy API key.
+    """
+
+    def __init__(
+        self, host: str = "http://ollama:11434", model: str = "llama3.2"
+    ) -> None:
+        from openai import OpenAI
+
+        self.client = OpenAI(
+            api_key="ollama",
+            base_url=f"{host.rstrip('/')}/v1",
+        )
+        self.model = model
+
+    def generate(self, query: str, contexts: List[Dict[str, Any]]) -> str:
+        context_block = _build_context_block(contexts)
+        user_message = f"Context:\n{context_block}\n\nQuestion: {query}"
         resp = self.client.chat.completions.create(
             model=self.model,
             messages=[
@@ -257,9 +271,7 @@ class Metrics:
 
     def summary(self) -> Dict[str, float]:
         avg_r = (
-            sum(self.t_retrieval) / len(self.t_retrieval)
-            if self.t_retrieval
-            else 0.0
+            sum(self.t_retrieval) / len(self.t_retrieval) if self.t_retrieval else 0.0
         )
         avg_g = (
             sum(self.t_generation) / len(self.t_generation)
@@ -285,29 +297,33 @@ class RAGEngine:
 
         if settings.vector_store == "qdrant":
             try:
-                self.store = QdrantStore(
-                    collection=settings.collection_name, dim=384
-                )
+                self.store = QdrantStore(collection=settings.collection_name, dim=384)
                 logger.info("Using Qdrant vector store")
             except Exception:
-                logger.warning(
-                    "Qdrant unavailable, falling back to in-memory store"
-                )
+                logger.warning("Qdrant unavailable, falling back to in-memory store")
                 self.store = InMemoryStore(dim=384)
         else:
             self.store = InMemoryStore(dim=384)
             logger.info("Using in-memory vector store")
 
-        if (
-            settings.llm_provider == "openrouter"
-            and settings.openrouter_api_key
-        ):
+        if settings.llm_provider == "openrouter" and settings.openrouter_api_key:
             self.llm = OpenRouterLLM(
                 api_key=settings.openrouter_api_key,
                 model=settings.llm_model,
             )
             self.llm_name = f"openrouter:{settings.llm_model}"
             logger.info("Using OpenRouter LLM: %s", settings.llm_model)
+        elif settings.llm_provider == "ollama":
+            self.llm = OllamaLLM(
+                host=settings.ollama_host,
+                model=settings.ollama_model,
+            )
+            self.llm_name = f"ollama:{settings.ollama_model}"
+            logger.info(
+                "Using Ollama LLM: %s at %s",
+                settings.ollama_model,
+                settings.ollama_host,
+            )
         else:
             self.llm = StubLLM()
             self.llm_name = "stub"
@@ -316,9 +332,7 @@ class RAGEngine:
         self.metrics = Metrics()
         self._doc_titles: set[str] = set()
 
-    def ingest_chunks(
-        self, chunks: List[Dict[str, str]]
-    ) -> Tuple[int, int]:
+    def ingest_chunks(self, chunks: List[Dict[str, str]]) -> Tuple[int, int]:
         """Embed and store chunks. Returns (total_docs, total_chunks)."""
         vectors: List[np.ndarray] = []
         metas: List[Dict[str, Any]] = []
@@ -348,9 +362,7 @@ class RAGEngine:
         )
         return len(self._doc_titles), total_chunks
 
-    def retrieve(
-        self, query: str, k: int = 4
-    ) -> List[Dict[str, Any]]:
+    def retrieve(self, query: str, k: int = 4) -> List[Dict[str, Any]]:
         """Embed query and return top-k matching chunks."""
         t0 = time.time()
         query_vec = self.embedder.embed(query)
@@ -365,9 +377,7 @@ class RAGEngine:
         )
         return [meta for _score, meta in results]
 
-    def generate(
-        self, query: str, contexts: List[Dict[str, Any]]
-    ) -> str:
+    def generate(self, query: str, contexts: List[Dict[str, Any]]) -> str:
         """Generate an answer from the LLM using retrieved contexts."""
         t0 = time.time()
         answer = self.llm.generate(query, contexts)
