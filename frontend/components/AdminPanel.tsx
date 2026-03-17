@@ -1,6 +1,6 @@
 'use client';
 import React from 'react';
-import { apiIngest, apiMetrics } from '@/lib/api';
+import { apiIngest, apiMetrics } from '../lib/api';
 
 export default function AdminPanel() {
   const [metrics, setMetrics] = React.useState<any>(null);

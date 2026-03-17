@@ -1,6 +1,6 @@
 'use client';
 import React from 'react';
-import { apiAsk } from '@/lib/api';
+import { apiAsk } from '../lib/api';
 
 type Message = { role: 'user' | 'assistant', content: string, citations?: {title:string, section?:string}[], chunks?: {title:string, section?:string, text:string}[] };
 

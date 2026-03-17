@@ -1,5 +1,5 @@
-import Chat from '@/components/Chat';
-import AdminPanel from '@/components/AdminPanel';
+import Chat from '../components/Chat';
+import AdminPanel from '../components/AdminPanel';
 
 export default function Page() {
   return (
