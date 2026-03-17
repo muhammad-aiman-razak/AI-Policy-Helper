@@ -1,22 +1,27 @@
 from pydantic import BaseModel
-from typing import List, Optional, Dict, Any
+from typing import List, Dict, Any
+
 
 class IngestResponse(BaseModel):
     indexed_docs: int
     indexed_chunks: int
 
+
 class AskRequest(BaseModel):
     query: str
     k: int | None = 8
+
 
 class Citation(BaseModel):
     title: str
     section: str | None = None
 
+
 class Chunk(BaseModel):
     title: str
     section: str | None = None
     text: str
+
 
 class AskResponse(BaseModel):
     query: str
@@ -24,6 +29,7 @@ class AskResponse(BaseModel):
     citations: List[Citation]
     chunks: List[Chunk]
     metrics: Dict[str, Any]
+
 
 class MetricsResponse(BaseModel):
     total_docs: int

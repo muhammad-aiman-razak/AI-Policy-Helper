@@ -37,9 +37,7 @@ def _md_sections(text: str) -> List[Tuple[str, str]]:
         first = lines[0]
         if first.startswith("#"):
             heading = first.lstrip("#").strip()
-            body_lines = [
-                ln for ln in lines[1:] if ln.strip()
-            ]
+            body_lines = [ln for ln in lines[1:] if ln.strip()]
             if not body_lines:
                 continue
         else:
@@ -48,9 +46,7 @@ def _md_sections(text: str) -> List[Tuple[str, str]]:
     return out or [("Introduction", text)]
 
 
-def chunk_text(
-    text: str, chunk_size: int, overlap: int
-) -> List[str]:
+def chunk_text(text: str, chunk_size: int, overlap: int) -> List[str]:
     """Split text into overlapping word-based chunks.
 
     Args:
@@ -85,12 +81,8 @@ def load_documents(data_dir: str) -> List[Dict[str, str]]:
         text = _read_text_file(path)
         title = _clean_title(fname)
         for section, body in _md_sections(text):
-            docs.append(
-                {"title": title, "section": section, "text": body}
-            )
-    logger.info(
-        "Loaded %d sections from %s", len(docs), data_dir
-    )
+            docs.append({"title": title, "section": section, "text": body})
+    logger.info("Loaded %d sections from %s", len(docs), data_dir)
     return docs
 
 
