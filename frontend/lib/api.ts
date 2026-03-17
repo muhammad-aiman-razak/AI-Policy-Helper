@@ -1,6 +1,6 @@
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000';
 
-export async function apiAsk(query: string, k: number = 4) {
+export async function apiAsk(query: string, k: number = 8) {
   const r = await fetch(`${API_BASE}/api/ask`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
