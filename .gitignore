@@ -1,0 +1,33 @@
+# Environment
+.env
+
+# Project governance (working documents)
+CLAUDE.md
+PROGRESS.md
+AI_Policy_Helper_README.md
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+*.egg
+
+# Node
+node_modules/
+.next/
+out/
+
+# Docker
+qdrant_data/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
