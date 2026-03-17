@@ -1,4 +1,5 @@
 import logging
+import time
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -50,29 +51,33 @@ async def metrics() -> MetricsResponse:
 async def ingest() -> IngestResponse:
     """Load documents from data directory, chunk, embed, and store."""
     try:
+        t0 = time.time()
         docs = load_documents(settings.data_dir)
         chunks = build_chunks_from_docs(
             docs, settings.chunk_size, settings.chunk_overlap
         )
         total_docs, total_chunks = engine.ingest_chunks(chunks)
+        elapsed_ms = (time.time() - t0) * 1000.0
+        logger.info(
+            "Ingestion completed: %d docs, %d chunks in %.0f ms",
+            total_docs,
+            total_chunks,
+            elapsed_ms,
+        )
         return IngestResponse(
             indexed_docs=total_docs,
             indexed_chunks=total_chunks,
         )
     except Exception as exc:
         logger.error("Ingestion failed: %s", exc, exc_info=True)
-        raise HTTPException(
-            status_code=500, detail=f"Ingestion failed: {exc}"
-        ) from exc
+        raise HTTPException(status_code=500, detail=f"Ingestion failed: {exc}") from exc
 
 
 @app.post("/api/ask", response_model=AskResponse)
 async def ask(req: AskRequest) -> AskResponse:
     """Retrieve relevant chunks and generate an answer with citations."""
     if not req.query.strip():
-        raise HTTPException(
-            status_code=400, detail="Query must not be empty"
-        )
+        raise HTTPException(status_code=400, detail="Query must not be empty")
 
     try:
         ctx = engine.retrieve(req.query, k=req.k or 4)
@@ -119,6 +124,4 @@ async def ask(req: AskRequest) -> AskResponse:
             exc,
             exc_info=True,
         )
-        raise HTTPException(
-            status_code=500, detail=f"Ask failed: {exc}"
-        ) from exc
+        raise HTTPException(status_code=500, detail=f"Ask failed: {exc}") from exc
