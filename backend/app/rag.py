@@ -155,7 +155,8 @@ ONLY the context chunks provided below.
 
 Rules:
 1. Cite every claim using the format: \
-"According to <Document Title> (Section: <Section Name>), ..."
+"According to <Title> (Section: <Section Name>), ..." \
+Do NOT include the word "Document:" — use the title directly.
 2. If the context does not contain enough information, say: \
 "I don't have enough information to answer that."
 3. Be concise and factual. Do not invent information beyond the context.
@@ -163,11 +164,16 @@ Rules:
 """
 
 
+def _format_display_title(title: str) -> str:
+    """Replace underscores with spaces for human-readable display."""
+    return title.replace("_", " ")
+
+
 def _build_context_block(contexts: List[Dict[str, Any]]) -> str:
     """Format retrieved chunks as numbered context blocks for the LLM."""
     parts: List[str] = []
     for i, ctx in enumerate(contexts, 1):
-        title = ctx.get("title", "Unknown")
+        title = _format_display_title(ctx.get("title", "Unknown"))
         section = ctx.get("section", "General")
         text = ctx.get("text", "")
         parts.append(
