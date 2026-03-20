@@ -2,6 +2,93 @@
 import React from "react";
 import { apiAsk, Citation, ChunkData } from "../lib/api";
 
+/** Replace underscores with spaces for human-readable display. */
+function formatTitle(title: string): string {
+  return title.replace(/_/g, " ");
+}
+
+/** Strip leading markdown heading markers (e.g. "## ") from each line. */
+function stripMarkdownHeading(text: string): string {
+  return text.replace(/^\s*#{1,6}\s+/gm, "");
+}
+
+/** Render inline **bold** markers as <strong> elements. */
+function renderInlineBold(text: string): React.ReactNode[] {
+  return text.split(/(\*\*[^*]+\*\*)/g).map((seg, i) => {
+    if (seg.startsWith("**") && seg.endsWith("**")) {
+      return <strong key={i}>{seg.slice(2, -2)}</strong>;
+    }
+    return seg;
+  });
+}
+
+/** Render text with basic markdown: headings stripped, bold, and list items. */
+function renderChunkMarkdown(raw: string): React.ReactNode {
+  const text = stripMarkdownHeading(raw);
+  return text.split("\n").map((line, i) => {
+    const trimmed = line.trimStart();
+    if (trimmed.startsWith("- ")) {
+      return (
+        <div key={i} style={{ paddingLeft: 12 }}>
+          {"• "}
+          {renderInlineBold(trimmed.slice(2))}
+        </div>
+      );
+    }
+    return (
+      <React.Fragment key={i}>
+        {i > 0 && "\n"}
+        {renderInlineBold(line)}
+      </React.Fragment>
+    );
+  });
+}
+
+/** Show section only when it differs from title to avoid redundancy. */
+function formatSection(
+  title: string,
+  section: string | null | undefined
+): string {
+  if (!section || section === title) return "";
+  return ` \u2014 ${section}`;
+}
+
+/** Strip "Document:" prefix the LLM sometimes echoes from the context block. */
+function stripDocumentPrefix(text: string): string {
+  return text.replace(/\bDocument:\s*/g, "");
+}
+
+/**
+ * Render answer text with bolded cited titles and inline **bold** markdown.
+ * Also strips any "Document:" prefix the LLM may echo.
+ */
+function renderAnswerText(text: string, citations?: Citation[]): React.ReactNode {
+  const cleaned = stripDocumentPrefix(text);
+
+  if (!citations || citations.length === 0) {
+    return renderInlineBold(cleaned);
+  }
+
+  // Build unique display titles to search for in the answer
+  const titles = Array.from(
+    new Set(citations.map((c) => formatTitle(c.title)))
+  ).sort((a, b) => b.length - a.length); // longest first to avoid partial matches
+
+  if (titles.length === 0) return renderInlineBold(cleaned);
+
+  // Escape regex special chars and build alternation pattern
+  const escaped = titles.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const pattern = new RegExp(`(${escaped.join("|")})`, "g");
+
+  return cleaned.split(pattern).map((segment, i) => {
+    if (titles.includes(segment)) {
+      return <strong key={i}>{segment}</strong>;
+    }
+    // Process **bold** markdown in non-title segments
+    return <React.Fragment key={i}>{renderInlineBold(segment)}</React.Fragment>;
+  });
+}
+
 interface Message {
   role: "user" | "assistant";
   content: string;
@@ -66,14 +153,14 @@ export default function Chat() {
         style={{
           maxHeight: 480,
           overflowY: "auto",
-          padding: 8,
+          padding: 12,
           border: "1px solid #eee",
           borderRadius: 8,
           marginBottom: 12,
         }}
       >
         {messages.length === 0 && (
-          <p style={{ color: "#999", textAlign: "center", margin: 24 }}>
+          <p style={{ color: "#999", textAlign: "center", margin: "24px 0" }}>
             Ask a question about company policies or products.
           </p>
         )}
@@ -81,8 +168,8 @@ export default function Chat() {
           <article
             key={msgIdx}
             style={{
-              margin: "12px 0",
-              padding: "8px 0",
+              margin: 0,
+              padding: "12px 0",
               borderBottom: "1px solid #f0f0f0",
             }}
           >
@@ -97,7 +184,9 @@ export default function Chat() {
               {msg.role === "user" ? "You" : "Assistant"}
             </div>
             <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.6 }}>
-              {msg.content}
+              {msg.role === "assistant"
+                ? renderAnswerText(msg.content, msg.citations)
+                : msg.content}
             </div>
 
             {msg.citations && msg.citations.length > 0 && (
@@ -116,7 +205,7 @@ export default function Chat() {
                         className="badge"
                         onClick={() => toggleChunk(msgIdx, citIdx)}
                         aria-expanded={isExpanded}
-                        aria-label={`Source: ${citation.title}, ${citation.section || "General"}`}
+                        aria-label={`Source: ${formatTitle(citation.title)}, ${citation.section || "General"}`}
                         title={citation.section || "General"}
                         style={{
                           cursor: "pointer",
@@ -126,26 +215,30 @@ export default function Chat() {
                           background: isExpanded ? "#e0e7ff" : "#eef2ff",
                         }}
                       >
-                        {citation.title}
-                        {citation.section ? ` \u2014 ${citation.section}` : ""}
+                        {formatTitle(citation.title)}
+                        {formatSection(citation.title, citation.section)}
                       </button>
                       {isExpanded && matchingChunk && (
                         <div
-                          className="card"
                           style={{
                             margin: "6px 0 8px",
-                            background: "#f9fafb",
+                            padding: "10px 12px",
+                            background: "#f8fafc",
+                            borderLeft: "3px solid #6366f1",
+                            borderRadius: 4,
                             fontSize: 13,
+                            lineHeight: 1.5,
                           }}
                         >
                           <div style={{ fontWeight: 600, marginBottom: 4 }}>
-                            {matchingChunk.title}
-                            {matchingChunk.section
-                              ? ` \u2014 ${matchingChunk.section}`
-                              : ""}
+                            {formatTitle(matchingChunk.title)}
+                            {formatSection(
+                              matchingChunk.title,
+                              matchingChunk.section
+                            )}
                           </div>
                           <div style={{ whiteSpace: "pre-wrap" }}>
-                            {matchingChunk.text}
+                            {renderChunkMarkdown(matchingChunk.text)}
                           </div>
                         </div>
                       )}
@@ -157,7 +250,7 @@ export default function Chat() {
           </article>
         ))}
         {loading && (
-          <div style={{ padding: 12, color: "#888" }} aria-busy="true">
+          <div style={{ padding: "12px 0", color: "#888" }} aria-busy="true">
             Thinking...
           </div>
         )}
