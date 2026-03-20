@@ -35,6 +35,22 @@ app.add_middleware(
 engine = RAGEngine()
 
 
+def _filter_cited(answer: str, citations: list[Citation]) -> list[Citation]:
+    """Keep only citations whose title appears in the LLM answer text.
+
+    The system prompt enforces "According to <Title> (Section: …)" format,
+    so checking for the title string in the answer is reliable. We check
+    both the raw title (underscores) and display title (spaces) since the
+    LLM context now uses human-readable titles.
+    Returns empty list when no titles match (e.g. "I don't have enough
+    information" with no actual citations in the text).
+    """
+    cited = [
+        c for c in citations if c.title in answer or c.title.replace("_", " ") in answer
+    ]
+    return cited
+
+
 @app.get("/api/health")
 async def health() -> dict[str, str]:
     """Liveness probe — always returns ok."""
@@ -83,19 +99,22 @@ async def ask(req: AskRequest) -> AskResponse:
         ctx = engine.retrieve(req.query, k=req.k or 4)
         answer = engine.generate(req.query, ctx)
 
-        # Deduplicate citations by (title, section)
+        # Deduplicate citations by (title, section), then keep only
+        # those the LLM actually referenced in its answer.
         seen: set[tuple[str | None, str | None]] = set()
-        citations: list[Citation] = []
+        all_citations: list[Citation] = []
         for chunk in ctx:
             key = (chunk.get("title"), chunk.get("section"))
             if key not in seen:
                 seen.add(key)
-                citations.append(
+                all_citations.append(
                     Citation(
                         title=chunk.get("title", "Unknown"),
                         section=chunk.get("section"),
                     )
                 )
+
+        citations = _filter_cited(answer, all_citations)
 
         chunks = [
             Chunk(
