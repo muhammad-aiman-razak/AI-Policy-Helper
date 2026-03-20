@@ -1,6 +1,9 @@
 import "./globals.css";
 
-export const metadata = { title: "AI Policy Helper" };
+export const metadata = {
+  title: "AI Policy Helper",
+  icons: { icon: "data:," },
+};
 
 export default function RootLayout({
   children,

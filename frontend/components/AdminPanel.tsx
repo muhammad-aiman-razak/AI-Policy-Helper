@@ -64,6 +64,7 @@ export default function AdminPanel() {
             borderRadius: 8,
             border: "1px solid #111",
             background: "#fff",
+            cursor: "pointer",
           }}
         >
           Refresh metrics
